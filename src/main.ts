@@ -11,9 +11,12 @@ async function bootstrap() {
     AppModule,
     {
       transport: Transport.TCP,
+      options: {
+        port: envs.PORT,
+      },
     },
   );
-
+  await app.listen();
   logger.log(
     `${chalk.green('Orders MS')} ${chalk.cyan('running on port')} ${chalk.magenta(envs.PORT)}`,
   );
