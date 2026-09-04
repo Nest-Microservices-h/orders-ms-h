@@ -9,7 +9,7 @@ export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
   create(createOrderDto: CreateOrderDto) {
-    return 'This action adds a new order';
+    return createOrderDto;
   }
 
   findAll() {
