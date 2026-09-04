@@ -1,8 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { PrismaService } from '@/lib/prisma';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
   create(createOrderDto: CreateOrderDto) {
     return 'This action adds a new order';
   }
