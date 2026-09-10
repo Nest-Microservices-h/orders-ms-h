@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { PrismaService } from '@/lib/prisma';
+import { RpcException } from '@nestjs/microservices';
 
 @Injectable()
 export class OrdersService {
@@ -8,16 +9,28 @@ export class OrdersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  create(createOrderDto: CreateOrderDto) {
-    return createOrderDto;
+  async create(createOrderDto: CreateOrderDto) {
+    const newOrder = await this.prisma.order.create({ data: createOrderDto });
+    return newOrder;
   }
 
   findAll() {
     return `This action returns all orders`;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} order`;
+  async findOne(id: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { id },
+    });
+
+    if (!order) {
+      throw new RpcException({
+        status: HttpStatus.NOT_FOUND,
+        message: `Order with id ${id} not found`,
+      });
+    }
+
+    return order;
   }
 
   changeStatus() {
