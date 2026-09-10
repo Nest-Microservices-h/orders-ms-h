@@ -14,8 +14,9 @@ export class OrdersService {
     return newOrder;
   }
 
-  findAll() {
-    return `This action returns all orders`;
+  async findAll() {
+    const all = await this.prisma.order.findMany();
+    return all;
   }
 
   async findOne(id: string) {
