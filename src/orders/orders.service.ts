@@ -2,7 +2,7 @@ import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { PrismaService } from '@/lib/prisma';
 import { RpcException } from '@nestjs/microservices';
-import { OrderPaginationDto } from './dto';
+import { ChangeOrderStatusDto, OrderPaginationDto } from './dto';
 
 @Injectable()
 export class OrdersService {
@@ -55,7 +55,16 @@ export class OrdersService {
     return order;
   }
 
-  changeStatus() {
-    return 'This action changes the status of an order';
+  async changeStatus(changeOrderStatusDto: ChangeOrderStatusDto) {
+    const { id, status } = changeOrderStatusDto;
+
+    const order = await this.findOne(id);
+
+    if (order.status === status) return order;
+
+    return this.prisma.order.update({
+      where: { id },
+      data: { status },
+    });
   }
 }
