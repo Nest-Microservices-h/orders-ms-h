@@ -11,8 +11,12 @@ export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createOrderDto: CreateOrderDto) {
-    const newOrder = await this.prisma.order.create({ data: createOrderDto });
-    return newOrder;
+    return {
+      service: 'Orders MICROSERVICE',
+      createOrderDto,
+    };
+    // const newOrder = await this.prisma.order.create({ data: createOrderDto });
+    // return newOrder;
   }
 
   async findAll(orderPaginationDto: OrderPaginationDto) {
