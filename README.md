@@ -1,114 +1,105 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# orders-ms
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Orders microservice built with NestJS and TCP. It does not expose an HTTP API; the gateway and other services communicate with it over `Transport.TCP`.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+┌─────────┐   TCP :3002    ┌───────────┐   TCP :3001    ┌────────────┐
+│ Gateway │ ─────────────► │ orders-ms │ ─────────────► │ products-ms│
+└─────────┘                └─────┬─────┘                └────────────┘
+                                 │
+                                 ▼
+                           PostgreSQL :5433
 ```
 
-## Compile and run the project
+When creating an order, the service validates each `productId` against products (`cmd: validate-products`), calculates totals using the prices returned by products (not the prices in the payload), and persists an `Order` and its `OrderItem` records.
+
+## Requirements
+
+- Node.js **20.19+** (Prisma 7)
+- Docker y Docker Compose
+- **products-ms** listening over TCP (defaults to `localhost:3001`). Without it, `createOrder` and `findOneOrder` fail during product validation.
+
+## Local setup
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
+cp .env.template .env
+docker compose up -d
+npx prisma generate
+npx prisma migrate deploy
+npm run start:dev
 ```
 
-## Run tests
+The Prisma client is generated in `src/generated/prisma` and is **not committed**. Regenerate it after cloning the repository or changing the schema.
+
+Confirm that the log reports `Orders MS running on port 3002`. If the service starts and then fails while connecting to products, the orders process is running correctly; products is unavailable.
+
+## Environment variables
+
+| Variable                     | Ejemplo                                                              | Rol                                                                              |
+| ---------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `PORT`                       | `3002`                                                               | TCP port for this service                                                        |
+| `DATABASE_URL`               | `postgresql://postgres:123456@localhost:5433/ordersdb?schema=public` | PostgreSQL connection string (host port **5433**, mapped to container port 5432) |
+| `PRODUCTS_MICROSERVICE_HOST` | `localhost`                                                          | TCP host for products-ms                                                         |
+| `PRODUCTS_MICROSERVICE_PORT` | `3001`                                                               | TCP port for products-ms                                                         |
+
+Joi validates these variables at startup. The process will not start if any are missing.
+
+`docker-compose.yml` starts `orders_database` (`postgres:18`) with the `postgres` user, password `123456`, and database `ordersdb`. The local `./postgres` volume is listed in `.gitignore`.
+
+## TCP contracts
+
+Patterns handled by `OrdersController`. Payloads are validated with class-validator DTOs (`whitelist` + `forbidNonWhitelisted`).
+
+| Pattern             | Payload                                       | Notas                                                                                                                      |
+| ------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `createOrder`       | `{ items: [{ productId, quantity, price }] }` | `items` must contain at least one entry. `price` is required by the DTO; the persisted amount is sourced from products-ms. |
+| `findAllOrders`     | `{ page?, limit?, status? }`                  | `page` defaults to 1 and `limit` defaults to 10. `status`: `PENDING` \| `PAID` \| `DELIVERED` \| `CANCELLED`.              |
+| `findOneOrder`      | `{ id }`                                      | UUID v4. The response is enriched with the product `name`.                                                                 |
+| `changeOrderStatus` | `{ id, status }`                              | Accepts the same statuses listed above.                                                                                    |
+
+Ejemplo de cliente Nest:
+
+```ts
+this.ordersClient.send('createOrder', {
+  items: [{ productId: 1, quantity: 2, price: 1 }],
+});
+```
+
+Products must respond to `{ cmd: 'validate-products' }` with an array of products, such as `{ id, name, price, ... }`.
+
+## Prisma
+
+Schema: `prisma/schema.prisma`. El CLI carga `prisma7.config.ts` solo.
 
 ```bash
-# unit tests
-$ npm run test
+# Development: create a migration from the schema
+npx prisma migrate dev --name <nombre>
 
-# e2e tests
-$ npm run test:e2e
+# Already-migrated environments / CI
+npx prisma migrate deploy
 
-# test coverage
-$ npm run test:cov
+npx prisma studio
 ```
 
-## Deployment
+## Scripts
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+| Script                                 | Uso                                                              |
+| -------------------------------------- | ---------------------------------------------------------------- |
+| `npm run start:dev`                    | Watch mode; intended for local development                       |
+| `npm run start`                        | Run once, without watch mode                                     |
+| `npm run build` / `npm run start:prod` | `node dist/main` (requires `.env` and a generated Prisma client) |
+| `npm run lint`                         | oxlint                                                           |
+| `npm test`                             | Jest (Nest starter suite; does not cover the TCP flow)           |
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Troubleshooting
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+1. **`Invalid environment variables`**: `.env` has not been copied, or an environment variable name does not match.
+2. **`Can't reach database` / P1001**: Docker Compose is not running, or `DATABASE_URL` uses host port `5432`. The published host port is **5433**.
+3. **Prisma generation fails / imports from `@/generated/prisma` fail**: run `npx prisma generate`.
+4. **Timeout / ECONNREFUSED when connecting to products**: products-ms is not listening at the configured `PRODUCTS_MICROSERVICE_*` address.
+5. **Product not found**: the ID does not exist, or products returned an incomplete list.
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Technology stack
 
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+NestJS 12 (TCP microservice), Prisma 7 with `@prisma/adapter-pg`, and PostgreSQL 18.
