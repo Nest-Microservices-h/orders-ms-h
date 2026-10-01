@@ -17,14 +17,14 @@ import {
   OrderPaginationDto,
 } from './dto';
 import { PrismaService } from '@/lib/prisma';
-import { PRODUCT_SERVICE } from '@/config';
+import { NATS_SERVICE } from '@/config';
 
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
 
   constructor(
-    @Inject(PRODUCT_SERVICE) private readonly productClient: ClientProxy,
+    @Inject(NATS_SERVICE) private readonly client: ClientProxy,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -33,7 +33,7 @@ export class OrdersService {
       const ids = [...createOrderDto.items.map((x) => x.productId)];
 
       const products: Product[] = await firstValueFrom(
-        this.productClient.send({ cmd: 'validate-products' }, ids),
+        this.client.send({ cmd: 'validate-products' }, ids),
       );
 
       const totalAmount = createOrderDto.items.reduce((acc, orderItem) => {
@@ -150,7 +150,7 @@ export class OrdersService {
     const productIds = order.orderItem.map((orderItem) => orderItem.productId);
 
     const products: Product[] = await firstValueFrom(
-      this.productClient.send({ cmd: 'validate-products' }, productIds),
+      this.client.send({ cmd: 'validate-products' }, productIds),
     );
 
     return {
