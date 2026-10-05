@@ -1,0 +1,17 @@
+dist/
+node_modules/
+.env
+.vscode/
+*.tsbuildinfo
+# AI / coding agents
+/.agents/
+/.claude/
+/.cursor/
+/.devin/
+/.windsurf/
+
+# Prisma generated
+/src/generated/prisma
+/prisma.config.js
+/prisma.config.js.map
+/prisma.config.d.ts

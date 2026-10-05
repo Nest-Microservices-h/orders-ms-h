@@ -13,6 +13,8 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "start:dev:app": "npm run prisma:start && npm run start:dev",
+    "prisma:start": "prisma migrate dev && prisma generate",
     "lint": "oxlint src/ test/",
     "test": "jest",
     "test:watch": "jest --watch",
