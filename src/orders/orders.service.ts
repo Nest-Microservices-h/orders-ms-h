@@ -15,6 +15,7 @@ import {
   ChangeOrderStatusDto,
   CreateOrderDto,
   OrderPaginationDto,
+  PaidOrderDto,
 } from './dto';
 import { PrismaService } from '@/lib/prisma';
 import { NATS_SERVICE } from '@/config';
@@ -191,5 +192,23 @@ export class OrdersService {
     );
 
     return paymentSession;
+  }
+
+  async paidOrder(paidOrderDto: PaidOrderDto) {
+    this.logger.log({ paidOrderDto });
+
+    const order = await this.prisma.order.update({
+      where: {
+        id: paidOrderDto.orderId,
+      },
+      data: {
+        status: 'PAID',
+        paid: true,
+        paidAt: new Date(),
+        stripeChargeId: paidOrderDto.stripePaymentId,
+      },
+    });
+
+    return order;
   }
 }
